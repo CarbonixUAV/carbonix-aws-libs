@@ -90,12 +90,250 @@ class AuroraHandler:
             self.connection.rollback()
             return False
 
+    def get_uid_by_column_str(self, table: str, column_name: str, stringValue: str) -> Optional[str]:
+        """Retrieve UID from specified table based on the TypeName."""
+        query = f"SELECT UID FROM {table} WHERE {column_name} = %s"
+        result = self.execute_query(query, (stringValue,), fetchone=True)
+        if result:
+            logger.info(f"{stringValue} found in {table}")
+            return result[0]
+        logger.warning(f"{stringValue} not found in {table}")
+        return None
+
+    def insert_summary(self, data: Dict[str, Optional[str]]) -> bool:
+        """Insert a new record into the SummaryTable."""
+        logger.info(f"Inserting summary data: {data}")
+        columns = [key for key in data if data[key] is not None]
+        values = [data[key] for key in columns]
+        placeholders = ", ".join(["%s"] * len(values))
+        query = f"INSERT INTO SummaryTable ({', '.join(columns)}) VALUES ({placeholders})"
+        return self.execute_insert_or_update(query, tuple(values))
+
+    def insert_error(self, data: Dict[str, Optional[str]]) -> bool:
+        """Insert a new record into the ErrorTable."""
+        columns = [key for key in data if data[key] is not None]
+        values = [data[key] for key in columns]
+        placeholders = ", ".join(["%s"] * len(values))
+        query = f"INSERT INTO ErrorTable ({', '.join(columns)}) VALUES ({placeholders})"
+        return self.execute_insert_or_update(query, tuple(values))
+
     def log_exists(self, sha256hash: str) -> bool:
         """Check if a log exists in LogTable by SHA256Hash."""
         query = "SELECT COUNT(1) FROM LogTable WHERE SHA256Hash = %s"
         result = self.execute_query(query, (sha256hash,), fetchone=True)
         return result[0] > 0 if result else False
 
+    def insert_log(self, log_data: Dict[str, Optional[str]]) -> bool:
+        """Insert a log entry into LogTable."""
+        columns = [key for key in log_data if log_data[key] is not None]
+        values = [log_data[key] for key in columns]
+        placeholders = ", ".join(["%s"] * len(values))
+        query = f"INSERT INTO LogTable ({', '.join(columns)}) VALUES ({placeholders})"
+        return self.execute_insert_or_update(query, tuple(values))
+
+    def update_telemetry_info(self, sha256hash: str, version: str, path: str) -> bool:
+        """Update telemetry extraction info in LogTable."""
+        query = """
+            UPDATE LogTable
+            SET TelemExtractionVersion = %s, TelemExtractionPath = %s
+            WHERE SHA256Hash = %s
+        """
+        return self.execute_insert_or_update(query, (version, path, sha256hash))
+
+    def insert_to_flighttable(self, flight_data: Dict[str, Optional[str]]) -> Optional[str]:
+        """Insert a new flight entry into the FlightTable."""
+        if not self.connection:
+            self.connect()
+
+        if not self.connection:
+            return False
+
+        try:
+            with self.connection.cursor() as cursor:
+                sql = """
+                    INSERT INTO FlightTable (
+                        TakeoffTime, TakeoffTimeBoot, LandingTime, Duration, PilotID,
+                        TakeoffLocation, LandingLocation, GSOID, version, FlightID
+                    )
+                    VALUES (%s, %s, %s, %s, %s, ST_PointFromText(%s), ST_PointFromText(%s), %s, %s, %s)
+                """
+                takeoff_point = f"POINT({flight_data['TakeoffLong']} {flight_data['TakeoffLat']})"
+                landing_point = f"POINT({flight_data['LandingLong']} {flight_data['LandingLat']})"
+
+                cursor.execute(sql, (
+                    flight_data['TakeoffTimestampStr'], flight_data['BootTimestampStr'], flight_data['LandingTimestampStr'],
+                    flight_data['TotalFlightTime'], flight_data['PilotUID'],
+                    takeoff_point, landing_point,
+                    flight_data['GSOUID'], flight_data['Version'], flight_data['FlightID']
+                ))
+
+                # Get the last inserted UID
+                uid = cursor.lastrowid
+                self.connection.commit()
+                logger.info(f"Record added successfully with UID: {uid}")
+                return uid
+        except Exception as e:
+            logger.error(f"Error inserting into FlightTable: {e}")
+            return None
+        finally:
+            self.close_connection()
+
+    def add_flight_file_record(self, flight_uid: str, log_uid: str) -> bool:
+        """Add a record to the FlightFile table linking flight and log entries."""
+        query = "INSERT INTO FlightFile (FlightID, LogID) VALUES (%s, %s)"
+        return self.execute_insert_or_update(query, (flight_uid, log_uid))
+
+    def get_aircraft_details_by_log_uid(self, log_uid: str) -> Optional[Dict[str, str]]:
+        """
+        Retrieve aircraft details and Aircraft Model details based on LogUID.
+        
+        :param log_uid: The unique identifier of the log entry.
+        :return: Dictionary containing aircraft and model details, or None if not found.
+        """
+        # From LogTable using LogUID, get AircraftID
+        query = "SELECT AircraftID FROM LogTable WHERE UID = %s"
+        result = self.execute_query(query, (log_uid,), fetchone=True)
+        if not result:
+            logger.error(f"No aircraft found for LogUID: {log_uid}")
+            return None
+        logger.info(f"Result: {result}")
+        aircraft_uid = result[0]
+        logger.info(f"AircraftUID: {aircraft_uid}")
+
+        # From AircraftTable using AircraftID, get the data for the aircraft
+        query = "SELECT * FROM AircraftTable WHERE UID = %s"
+        result = self.execute_query(query, (aircraft_uid,), fetchone=True)
+        if not result:
+            logger.error(f"No aircraft details found for LogUID: {log_uid}")
+            return None
+        logger.info(f"Result: {result}")
+        aircraft_details = result
+        aircraft_model_uid = aircraft_details[3]
+        logger.info(f"AircraftModelUID: {aircraft_model_uid}")
+        # From AircraftModel using AircraftModelID, get the data for the model
+        query = "SELECT * FROM AircraftModel WHERE UID = %s"
+        result = self.execute_query(query, (aircraft_model_uid,), fetchone=True)
+        if not result:
+            logger.error(f"No aircraft model details found for LogUID: {log_uid}")
+            return None
+        logger.info(f"Result: {result}")
+        model_details = result
+
+        # Combine the aircraft and model details into a single dictionary
+        aircraft_details.update(model_details)
+        return aircraft_details
+
+    def get_all_logs_by_aircraft_uid(self, aircraft_id: int) -> Optional[List[Dict[str, str]]]:
+        """
+        Retrieve all logs associated with a specific aircraft based on AircraftID.
+        
+        :param aircraft_id: The unique identifier of the aircraft.
+        :return: List of dictionaries containing log details, or None if not found.
+        """
+        try:
+            query = """
+                SELECT SHA256Hash, LogType, LogFileName, LogFileSize, StartTime, PilotComments, S3FileLocation
+                FROM LogTable
+                WHERE AircraftID = %s
+            """
+            result = self.execute_query(query, (aircraft_id,))
+            
+            if not result:
+                logger.error(f"No logs found for AircraftID: {aircraft_id}")
+                return None
+            
+            # Convert each result tuple to a dictionary
+            logs = [dict(zip([col[0] for col in self.cursor.description], row)) for row in result]
+            
+            return logs
+
+        except Exception as e:
+            logger.error(f"Error retrieving logs for AircraftID {aircraft_id}: {e}")
+            return None
+   
+    def get_all_flights_by_aircraft_uid(self, aircraft_id: int) -> Optional[Dict[str, str]]:
+        """
+        Retrieve all flights associated with a specific aircraft based on AircraftID.
+        
+        :param aircraft_id: The unique identifier of the aircraft.
+        :return: Dictionary containing flight details, or None if not found.
+        """
+        try:
+            query = """
+                SELECT PilotID, UTCTimeOffset, TakeoffTime, TakeoffTimeBoot, LandingTime,  
+                    TakeoffLocation, LandingLocation, Duration, GSOID, version, FlightID
+                FROM FlightTable
+                WHERE UID IN (
+                    SELECT FlightID FROM FlightFile WHERE LogID IN (
+                        SELECT UID FROM LogTable WHERE AircraftID = %s
+                    )
+                )
+            """
+            result = self.execute_query(query, (aircraft_id,))
+            
+            if not result:
+                logger.error(f"No flights found for AircraftID: {aircraft_id}")
+                return None
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"Error retrieving flights for AircraftID {aircraft_id}: {e}")
+            return None
+
+    def get_all_summary_for_flight_uid(self, flight_uid: int) -> Optional[Dict[str, str]]:
+        """
+        Retrieve all summaries associated with a specific flight based on FlightUID.
+        
+        :param flight_uid: The unique identifier of the flight.
+        :return: Dictionary containing summary details, or None if not found.
+        """
+        try:
+            query = """
+                SELECT LogID, FlightID, Message, Value, Unit, Version, TypeID, ProcessedDate, Instance
+                FROM SummaryTable
+                WHERE LogID IN (
+                    SELECT LogID FROM FlightFile WHERE FlightID = %s
+                )
+            """
+            result = self.execute_query(query, (flight_uid,))
+            
+            if not result:
+                logger.error(f"No summaries found for FlightUID: {flight_uid}")
+                return None
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error retrieving summaries for FlightUID {flight_uid}: {e}")
+            return None
+    
+    def get_all_errors_for_flight_uid(self, flight_uid: int) -> Optional[Dict[str, str]]:
+        """
+        Retrieve all errors associated with a specific flight based on FlightUID.
+        
+        :param flight_uid: The unique identifier of the flight.
+        :return: Dictionary containing error details, or None if not found.
+        """
+        try:
+            query = """
+                SELECT LogID, FlightID, Message, Severity, ErrorStartTimestamp, ErrorClearTimestamp,
+                ErrorDuration, Comment, ReportedByUserID, ResolvedStatus, ResolvedUserID,
+                ResolutionComment, Version, TypeID, ProcessedDate, Instance
+                FROM ErrorTable
+                WHERE LogID IN (
+                    SELECT LogID FROM FlightFile WHERE FlightID = %s
+                )
+            """
+            result = self.execute_query(query, (flight_uid,))
+            
+            if not result:
+                logger.error(f"No errors found for FlightUID: {flight_uid}")
+                return None
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error retrieving errors for FlightUID {flight_uid}: {e}")
+            return None
 
     def get_aircraft_uid_from_cubeid(self, cube_id: str, timestamp: str) -> Optional[str]:
         """
@@ -165,6 +403,7 @@ class AuroraHandler:
         except Exception as e:
             logger.error(f"Error retrieving aircraft for CubeID {cube_id}: {e}")
             return None
+
     def __del__(self):
         """Destructor to ensure the connection is closed."""
         self.close_connection()
