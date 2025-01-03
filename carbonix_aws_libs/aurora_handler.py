@@ -2,7 +2,7 @@ import logging
 import pymysql
 import json
 import boto3
-from typing import Optional, Tuple, Dict
+from typing import List, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,75 @@ class AuroraHandler:
         result = self.execute_query(query, (sha256hash,), fetchone=True)
         return result[0] > 0 if result else False
 
+
+    def get_aircraft_uid_from_cubeid(self, cube_id: str, timestamp: str) -> Optional[str]:
+        """
+        Retrieve the aircraft UID based on the CubeID and timestamp.
+
+        :param cube_id: The unique identifier of the Cube.
+        :param timestamp: The timestamp of the log.
+        :return: The UID of the aircraft, or None if not found.
+        """
+        try:
+            query = """
+                SELECT 
+                    ASCL.AircraftID
+                FROM 
+                    AircraftSubComponentLink AS ASCL
+                JOIN 
+                    SubComponentUnits AS SCU
+                    ON ASCL.SubComponentUnitID = SCU.UID
+                WHERE 
+                    SCU.SerialNumber = %s
+                    AND ASCL.StartDate <= FROM_UNIXTIME(%s)
+                    AND (ASCL.EndDate IS NULL OR ASCL.EndDate >= FROM_UNIXTIME(%s));
+            """
+            result = self.execute_query(query, (cube_id, timestamp, timestamp), fetchone=True)
+            
+            if not result:
+                logger.error(f"No aircraft found for CubeID: {cube_id}")
+                return None
+            
+            return result[0]
+        except Exception as e:
+            logger.error(f"Error retrieving aircraft for CubeID {cube_id}: {e}")
+            return None
+
+    def get_aircraft_name_from_cubeid(self, cube_id: str, timestamp: str) -> Optional[str]:
+        """
+        Retrieve the aircraft name based on the CubeID and timestamp.
+
+        :param cube_id: The unique identifier of the Cube.
+        :param timestamp: The timestamp of the log.
+        :return: The name of the aircraft, or None if not found.
+        """
+        try:
+            query = """
+                SELECT 
+                    AT.AircraftName
+                FROM 
+                    AircraftSubComponentLink AS ASCL
+                JOIN 
+                    SubComponentUnits AS SCU
+                    ON ASCL.SubComponentUnitID = SCU.UID
+                JOIN
+                    AircraftTable AS AT
+                    ON ASCL.AircraftID = AT.UID
+                WHERE 
+                    SCU.SerialNumber = %s
+                    AND ASCL.StartDate <= FROM_UNIXTIME(%s)
+                    AND (ASCL.EndDate IS NULL OR ASCL.EndDate >= FROM_UNIXTIME(%s));
+            """
+            result = self.execute_query(query, (cube_id, timestamp, timestamp), fetchone=True)
+            
+            if not result:
+                logger.error(f"No aircraft found for CubeID: {cube_id}")
+                return None
+            
+            return result[0]
+        except Exception as e:
+            logger.error(f"Error retrieving aircraft for CubeID {cube_id}: {e}")
+            return None
     def __del__(self):
         """Destructor to ensure the connection is closed."""
         self.close_connection()
