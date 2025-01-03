@@ -2,7 +2,7 @@ import logging
 import pymysql
 import json
 import boto3
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import os
 from dotenv import load_dotenv
 
@@ -403,6 +403,51 @@ class AuroraHandler:
         except Exception as e:
             logger.error(f"Error retrieving aircraft for CubeID {cube_id}: {e}")
             return None
+    
+    def get_aircraft_row_by_cubeid(self, cube_id: str, timestamp: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the full row from AircraftTable based on the CubeID and timestamp.
+
+        :param cube_id: The unique identifier of the Cube.
+        :param timestamp: The timestamp of the log.
+        :return: A dictionary containing the full row from AircraftTable, or None if not found.
+        """
+        try:
+            query = """
+                SELECT 
+                    AT.*
+                FROM 
+                    AircraftSubComponentLink AS ASCL
+                JOIN 
+                    SubComponentUnits AS SCU
+                    ON ASCL.SubComponentUnitID = SCU.UID
+                JOIN
+                    AircraftTable AS AT
+                    ON ASCL.AircraftID = AT.UID
+                WHERE 
+                    SCU.SerialNumber = %s
+                    AND ASCL.StartDate <= FROM_UNIXTIME(%s)
+                    AND (ASCL.EndDate IS NULL OR ASCL.EndDate >= FROM_UNIXTIME(%s));
+            """
+            # Execute the query and fetch the result
+            result = self.execute_query(query, (cube_id, timestamp, timestamp), fetchone=True)
+
+            if not result:
+                logger.error(f"No aircraft row found for CubeID: {cube_id}")
+                return None
+
+            # Get column names from the cursor description
+            with self.connection.cursor() as cursor:
+                cursor.execute(query, (cube_id, timestamp, timestamp))
+                column_names = [desc[0] for desc in cursor.description]
+            
+            # Combine column names and result values into a dictionary
+            row_dict = dict(zip(column_names, result))
+            return row_dict
+
+        except Exception as e:
+            logger.error(f"Error retrieving aircraft row for CubeID {cube_id}: {e}")
+            return None
 
     def __del__(self):
         """Destructor to ensure the connection is closed."""
@@ -434,4 +479,6 @@ if __name__ == "__main__":
     result = db_handler.get_aircraft_uid_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
     logger.debug(f"Result: {result}")
     result = db_handler.get_aircraft_name_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
+    logger.debug(f"Result: {result}")
+    result = db_handler.get_aircraft_row_by_cubeid('001F003A 34305107 35383431', '1732066788.992812')
     logger.debug(f"Result: {result}")
