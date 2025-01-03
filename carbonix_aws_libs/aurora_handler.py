@@ -3,6 +3,10 @@ import pymysql
 import json
 import boto3
 from typing import List, Dict, Optional, Tuple
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -164,3 +168,31 @@ class AuroraHandler:
     def __del__(self):
         """Destructor to ensure the connection is closed."""
         self.close_connection()
+
+
+if __name__ == "__main__":
+    logging.info("Starting AuroraHandler test")
+    logger.setLevel(logging.DEBUG)
+
+    DB_CREDENTIALS = {
+        'host': os.getenv('DB_HOST'),
+        'username': os.getenv('DB_USERNAME'),
+        'password': os.getenv('DB_PASSWORD', ""),
+        'dbname': os.getenv('DB_NAME'),
+        'port': int(os.getenv('DB_PORT', 3306)),
+        'region': os.getenv('AWS_REGION', 'ap-southeast-2'),
+        'secret_name': os.getenv('DB_SECRET_NAME'),
+    }
+    if not DB_CREDENTIALS['host'] or not DB_CREDENTIALS['username'] or not DB_CREDENTIALS['dbname'] or not DB_CREDENTIALS['secret_name']:
+        logger.error("Missing required environment variables.")
+        exit(1)
+
+    db_handler = AuroraHandler(DB_CREDENTIALS)
+    if not db_handler.init_state:
+        logger.error("Failed to initialize AuroraHandler")
+        exit(1)
+    
+    result = db_handler.get_aircraft_uid_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
+    logger.debug(f"Result: {result}")
+    result = db_handler.get_aircraft_name_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
+    logger.debug(f"Result: {result}")
