@@ -7,8 +7,8 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 
 class AthenaHandler:
-    def __init__(self, database: str, output_location: Optional[str] = None):
-        self.athena_client = boto3.client('athena')
+    def __init__(self, database: str, output_location: Optional[str] = None, region_name: Optional[str] = 'ap-southeast-2'):
+        self.athena_client = boto3.client('athena', region_name=region_name)
         self.database = database
         self.output_location = output_location
 

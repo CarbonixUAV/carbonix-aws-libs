@@ -6,8 +6,8 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 
 class GlueCrawlerHandler:
-    def __init__(self, crawler_name: str):
-        self.glue_client = boto3.client('glue')
+    def __init__(self, crawler_name: str, region_name: Optional[str] = 'ap-southeast-2'):
+        self.glue_client = boto3.client('glue', region_name=region_name)
         self.crawler_name = crawler_name
 
     def start_crawler(self) -> Optional[Dict[str, str]]:
