@@ -136,17 +136,27 @@ class S3Handler:
     def check_s3_item_exists(self, bucket_name: str, item_name: str) -> bool:
         """
         Check if a file or folder exists in an S3 bucket.
+        Uses HeadObject for files (cheaper) and limits ListObjects for folders.
         """
         try:
+            # Check if the item is a file
+            if not item_name.endswith('/'):
+                try:
+                    self.s3_client.head_object(Bucket=bucket_name, Key=item_name)
+                    return True
+                except self.s3_client.exceptions.ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        logger.error(f"The object {item_name} does not exist in bucket {bucket_name}.")
+                        return False
+                    else:
+                        logger.error(f"Error checking item existence in S3: {e}")
+                        raise False
+
+            # If the item_name ends with '/', check for a folder (prefix existence)
             bucket = self.s3_resource.Bucket(bucket_name)
-            objs = list(bucket.objects.filter(Prefix=item_name))
-            if len(objs) > 0:
-                # If checking for a folder, ensure the prefix matches exactly
-                if item_name.endswith('/'):
-                    return any(obj.key.startswith(item_name) for obj in objs)
-                else:
-                    return any(obj.key == item_name for obj in objs)
-            return False
+            objs = bucket.objects.filter(Prefix=item_name, MaxKeys=1)
+            return any(obj.key.startswith(item_name) for obj in objs)
+
         except Exception as e:
             logger.error(f"Error checking item existence in S3: {e}")
             return False
@@ -204,9 +214,16 @@ if __name__ == "__main__":
         logging.getLogger(lib).setLevel(logging.WARNING)
 
     s3_handler = S3Handler()
-    bucket_name = 'cx-dev-all-logs'
-    item_name = 'V95_8_20240920-034906.bin'
+    bucket_name = 'carbonix-all-logs'
+    item_name = 'D9_143_20221102-223449.bin'
 
+    exists = s3_handler.check_s3_item_exists(bucket_name, item_name)
+    if exists:
+        logger.info(f"The item '{item_name}' exists in the bucket '{bucket_name}'.")
+    else:
+        logger.info(f"The item '{item_name}' does not exist in the bucket '{bucket_name}'.")
+    bucket_name = 'carbonix-logs-telemetry-data-pool'
+    item_name = 'LogUID=000030d4774dca069b3d88f653dc0f47d658f048a8968c30e3fcbaf74977b9b4/'
     exists = s3_handler.check_s3_item_exists(bucket_name, item_name)
     if exists:
         logger.info(f"The item '{item_name}' exists in the bucket '{bucket_name}'.")
