@@ -34,6 +34,18 @@ class AuroraHandler:
         except Exception as e:
             logger.error(f"Error retrieving secret: {e}")
 
+    def reconnect(self) -> bool:
+        """Reconnect to the database."""
+        logger.info("Reconnecting to the database...")
+        if self.connection:
+            self.close_connection()
+        self.retrieve_db_credentials()
+        return self.connect()
+    
+    def connected(self) -> bool:
+        """Check if the handler is connected to the database."""
+        return self.connection
+    
     def connect(self) -> bool:
         """Establish a connection to the RDS database."""
         try:
@@ -459,7 +471,7 @@ if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)
 
     DB_CREDENTIALS = {
-        'host': os.getenv('DB_HOST'),
+        'host': 'temp',
         'username': os.getenv('DB_USERNAME'),
         'password': os.getenv('DB_PASSWORD', ""),
         'dbname': os.getenv('DB_NAME'),
@@ -474,8 +486,27 @@ if __name__ == "__main__":
     db_handler = AuroraHandler(DB_CREDENTIALS)
     if not db_handler.init_state:
         logger.error("Failed to initialize AuroraHandler")
-        exit(1)
-    
+
+    # testing reconnection
+    while True:
+        if db_handler.connected():
+            result = db_handler.get_aircraft_name_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
+            logger.debug(f"Result: {result}")
+            break
+        else:
+            logger.error("Database connection failed.")
+            DB_CREDENTIALS = {
+                'host': os.getenv('DB_HOST'),
+                'username': os.getenv('DB_USERNAME'),
+                'password': os.getenv('DB_PASSWORD', ""),
+                'dbname': os.getenv('DB_NAME'),
+                'port': int(os.getenv('DB_PORT', 3306)),
+                'region': os.getenv('AWS_REGION', 'ap-southeast-2'),
+                'secret_name': os.getenv('DB_SECRET_NAME'),
+            }
+            db_handler.db_credentials = DB_CREDENTIALS
+            db_handler.reconnect()
+        
     result = db_handler.get_aircraft_uid_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
     logger.debug(f"Result: {result}")
     result = db_handler.get_aircraft_name_from_cubeid('001F003A 34305107 35383431', '1732066788.992812')
