@@ -6,8 +6,10 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
+
 class AthenaHandler:
-    def __init__(self, database: str, output_location: Optional[str] = None, region_name: Optional[str] = 'ap-southeast-2'):
+    def __init__(self, database: str, output_location: Optional[str] = None,
+                 region_name: Optional[str] = 'ap-southeast-2'):
         self.athena_client = boto3.client('athena', region_name=region_name)
         self.database = database
         self.output_location = output_location
@@ -52,7 +54,8 @@ class AthenaHandler:
             logger.debug(f"Error getting query status: {e}")
             return None
 
-    def wait_for_query_to_complete(self, query_execution_id: str, delay: int = 5) -> bool:
+    def wait_for_query_to_complete(self, query_execution_id: str,
+                                   delay: int = 5) -> bool:
         """
         Wait for an Athena query to complete.
 
@@ -66,7 +69,8 @@ class AthenaHandler:
                 return status == 'SUCCEEDED'
             time.sleep(delay)
 
-    def get_query_results(self, query_execution_id: str) -> Optional[Dict[str, Any]]:
+    def get_query_results(self,
+                          query_execution_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve the results of an Athena query.
 
@@ -95,14 +99,19 @@ class AthenaHandler:
         LIMIT 1;
         """
         query_execution_id = self.execute_query(query)
-        if query_execution_id and self.wait_for_query_to_complete(query_execution_id):
+        if not query_execution_id:
+            return False
+        query_completed = self.wait_for_query_to_complete(query_execution_id)
+        if query_completed:
             results = self.get_query_results(query_execution_id)
-            if results and 'ResultSet' in results and 'Rows' in results['ResultSet']:
+            if results and 'ResultSet' in results and (
+                    'Rows' in results['ResultSet']):
                 # The first row is the header
                 return len(results['ResultSet']['Rows']) > 1
         return False
-    
-    def get_boot_time(self, loguid: str, file_type:str) -> Optional[Dict[str, Any]]:
+
+    def get_boot_time(self, loguid: str,
+                      file_type: str) -> Optional[Dict[str, Any]]:
         """
         get boot time from the Athena table based on the loguid.
 
@@ -113,7 +122,7 @@ class AthenaHandler:
         """
         SELECT loguid, timestamp
         FROM telemetry_pool_v4.carbonix_logs_telemetry_data_pool
-        WHERE loguid = 'fd3be2ec0c7405080e79c85ee3a7edf38ae0100c8cd8ea04c99ac6a10c990c93'
+        WHERE loguid = 'fd3be2ec0c7405080e79c85ee3a7edf38ae0100c8cd8ea04c99ac6a10c990c93' # noqa
         AND (MessageType = 'FMT')
         AND (KeyName = 'Type')
         ORDER BY timestamp ASC
@@ -142,11 +151,17 @@ class AthenaHandler:
             """
         else:
             return None
-        
+
         query_execution_id = self.execute_query(query)
-        if query_execution_id and self.wait_for_query_to_complete(query_execution_id):
+        if not query_execution_id:
+            return None
+        query_completed = self.wait_for_query_to_complete(query_execution_id)
+        if query_completed:
             results = self.get_query_results(query_execution_id)
-            if results and 'ResultSet' in results and 'Rows' in results['ResultSet']:
-                return results['ResultSet']['Rows'][1]['Data'][1]['VarCharValue']
-        return None        
+            if results and 'ResultSet' in results and (
+                    'Rows' in results['ResultSet']):
+                first_row = results['ResultSet']['Rows'][1]
+                value = first_row['Data'][1]['VarCharValue']
+                return value
+        return None
 
