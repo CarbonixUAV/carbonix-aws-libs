@@ -221,3 +221,20 @@ class AthenaHandler:
         query_completed = self.wait_for_query_to_complete(query_execution_id)
         return query_completed
 
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    for lib in ('boto3', 'botocore', 'urllib3', 'pandas',
+                'pyarrow', 'pymavlink', 's3transfer'):
+        # Change from DEBUG to WARNING
+        logging.getLogger(lib).setLevel(logging.WARNING)
+
+    athena_handler = AthenaHandler(
+        database='telemetry_pool_v5.carbonix_logs_telemetry_data_pool',
+        output_location='s3://carbonix-athnea-result/',
+        region_name='ap-southeast-2')
+    loguid = '4b0cb7be12061b2289756c749a8c0744be875beba82ab0fe94cc3d5c9f68ee8f'
+    if athena_handler.check_loguid_exists(loguid):
+        logger.info(f"The loguid '{loguid}' exists in Athena table.")
+    else:
+        logger.info(f"The loguid '{loguid}' does not exist in Athena table.")
