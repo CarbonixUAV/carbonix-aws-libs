@@ -34,13 +34,13 @@ class AuroraHandler:
                 SecretId=self.db_credentials['secret_name'])
             secret = json.loads(response['SecretString'])
             self.db_credentials['password'] = secret['password']
-            logger.info("Secret retrieved successfully from Secrets Manager.")
+            logger.debug("Secret retrieved successfully from Secrets Manager.")
         except Exception as e:
             logger.error(f"Error retrieving secret: {e}")
 
     def reconnect(self) -> bool:
         """Reconnect to the database."""
-        logger.info("Reconnecting to the database...")
+        logger.debug("Reconnecting to the database...")
         if self.connection:
             self.close_connection()
         self.retrieve_db_credentials()
@@ -71,7 +71,7 @@ class AuroraHandler:
         if self.connection:
             try:
                 self.connection.close()
-                logger.info("Database connection closed.")
+                logger.debug("Database connection closed.")
             except pymysql.MySQLError as e:
                 logger.error(f"Error closing connection: {e}")
             finally:
@@ -100,7 +100,6 @@ class AuroraHandler:
             with self.connection.cursor() as cursor:
                 cursor.execute(query, params)
                 self.connection.commit()
-            logger.info("Transaction committed.")
             return True
         except Exception as e:
             logger.error(f"Transaction error: {e}")
@@ -113,14 +112,14 @@ class AuroraHandler:
         query = f"SELECT UID FROM {table} WHERE {column_name} = %s"
         result = self.execute_query(query, (stringValue,), fetchone=True)
         if result:
-            logger.info(f"{stringValue} found in {table}")
+            logger.debug(f"{stringValue} found in {table}")
             return result[0]
-        logger.warning(f"{stringValue} not found in {table}")
+        logger.info(f"FAILED: {stringValue} not found in {table}")
         return None
 
     def insert_summary(self, data: Dict[str, Optional[str]]) -> bool:
         """Insert a new record into the SummaryTable."""
-        logger.info(f"Inserting summary data: {data}")
+        logger.debug(f"Inserting summary data: {data}")
         columns = [key for key in data if data[key] is not None]
         values = [data[key] for key in columns]
         placeholders = ", ".join(["%s"] * len(values))
@@ -197,10 +196,10 @@ class AuroraHandler:
                 # Get the last inserted UID
                 uid = cursor.lastrowid
                 self.connection.commit()
-                logger.info(f"Record added successfully with UID: {uid}")
+                logger.debug(f"Record added successfully with UID: {uid}")
                 return uid
         except Exception as e:
-            logger.error(f"Error inserting into FlightTable: {e}")
+            logger.error(f"{e}")
             return None
         finally:
             self.close_connection()
@@ -222,30 +221,27 @@ class AuroraHandler:
         query = "SELECT AircraftID FROM LogTable WHERE UID = %s"
         result = self.execute_query(query, (log_uid,), fetchone=True)
         if not result:
-            logger.error(f"No aircraft found for LogUID: {log_uid}")
+            logger.info(f"FAILED: No AircraftID found for LogUID: {log_uid}")
             return None
-        logger.info(f"Result: {result}")
         aircraft_uid = result[0]
-        logger.info(f"AircraftUID: {aircraft_uid}")
+        logger.debug(f"AircraftUID: {aircraft_uid}")
 
         # From AircraftTable using AircraftID, get the data for the aircraft
         query = "SELECT * FROM AircraftTable WHERE UID = %s"
         result = self.execute_query(query, (aircraft_uid,), fetchone=True)
         if not result:
-            logger.error(f"No aircraft details found for LogUID: {log_uid}")
+            logger.info(f"FAILED: No aircraft found for LogUID: {log_uid}")
             return None
-        logger.info(f"Result: {result}")
         aircraft_details = result
         aircraft_model_uid = aircraft_details[3]
-        logger.info(f"AircraftModelUID: {aircraft_model_uid}")
+        logger.debug(f"AircraftModelUID: {aircraft_model_uid}")
         # From AircraftModel using AircraftModelID, get the data for the model
         query = "SELECT * FROM AircraftModel WHERE UID = %s"
         result = self.execute_query(query, (aircraft_model_uid,),
                                     fetchone=True)
         if not result:
-            logger.info(f"No aircraft model found for LogUID: {log_uid}")
+            logger.info(f"FAILED: No model found for LogUID: {log_uid}")
             return None
-        logger.info(f"Result: {result}")
         model_details = result
 
         # Combine the aircraft and model details into a single dictionary
@@ -269,7 +265,7 @@ class AuroraHandler:
             result = self.execute_query(query, (aircraft_id,))
 
             if not result:
-                logger.error(f"No logs found for AircraftID: {aircraft_id}")
+                logger.info(f"FAILED: No logs found AircraftID: {aircraft_id}")
                 return None
 
             # Convert each result tuple to a dictionary
@@ -304,7 +300,8 @@ class AuroraHandler:
             result = self.execute_query(query, (aircraft_id,))
 
             if not result:
-                logger.error(f"No flights found for AircraftID: {aircraft_id}")
+                logger.info(f"FAILED: No flights found "
+                            f"for AircraftID: {aircraft_id}")
                 return None
 
             return result
@@ -332,7 +329,8 @@ class AuroraHandler:
             result = self.execute_query(query, (flight_uid,))
 
             if not result:
-                logger.error(f"No summaries found for FlightUID: {flight_uid}")
+                logger.info(f"FAILED: No summaries found for "
+                            f"FlightUID: {flight_uid}")
                 return None
 
             return result
@@ -361,7 +359,8 @@ class AuroraHandler:
             result = self.execute_query(query, (flight_uid,))
 
             if not result:
-                logger.error(f"No errors found for FlightUID: {flight_uid}")
+                logger.info(f"FAILED: No errors found for "
+                            f"FlightUID: {flight_uid}")
                 return None
 
             return result
@@ -396,7 +395,7 @@ class AuroraHandler:
                                         fetchone=True)
 
             if not result:
-                logger.error(f"No aircraft found for CubeID: {cube_id}")
+                logger.info(f"FALIED: No aircraft found for CubeID: {cube_id}")
                 return None
 
             return result[0]
@@ -434,7 +433,7 @@ class AuroraHandler:
                                         fetchone=True)
 
             if not result:
-                logger.error(f"No aircraft found for CubeID: {cube_id}")
+                logger.info(f"FALIED: No aircraft found for CubeID: {cube_id}")
                 return None
 
             return result[0]
@@ -473,7 +472,7 @@ class AuroraHandler:
                                         fetchone=True)
 
             if not result:
-                logger.error(f"No aircraft row found for CubeID: {cube_id}")
+                logger.info(f"FAILED: No aircraft found for CubeID: {cube_id}")
                 return None
 
             # Get column names from the cursor description

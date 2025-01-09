@@ -17,7 +17,8 @@ class S3Handler:
         self.s3_resource = boto3.resource('s3', region_name=aws_region)
         logger.info("S3Handler initialized.")
 
-    def get_s3_file_metadata(self, bucket_name: str, object_key: str) -> Optional[Dict[str, str]]:
+    def get_s3_file_metadata(self, bucket_name: str, object_key: str
+                             ) -> Optional[Dict[str, str]]:
         """
         Get the metadata of an S3 file.
         """
@@ -28,27 +29,29 @@ class S3Handler:
             return metadata
         except self.s3_client.exceptions.NoSuchKey:
             logger.error(
-                f"The object {object_key} does not exist in bucket {bucket_name}.")
+                f"The object {object_key} does not exist in {bucket_name}.")
             return None
         except Exception as e:
             logger.error(f"Error retrieving metadata: {e}")
             return None
 
     def copy_file_s3_to_s3(self, source_bucket: str, source_key: str,
-                           destination_bucket: str, destination_key: str) -> bool:
+                           destination_bucket: str, destination_key: str
+                           ) -> bool:
         """
         Copy a file from one S3 bucket to another.
         """
         try:
             logger.debug(
-                f"Copying {source_key} from {source_bucket} to {destination_bucket}/{destination_key}")
+                f"Copying {source_key} from {source_bucket} to "
+                f"{destination_bucket}/{destination_key}")
             self.s3_client.copy_object(
                 CopySource={"Bucket": source_bucket, "Key": source_key},
                 Bucket=destination_bucket,
                 Key=destination_key
             )
-            logger.info(
-                f"Copied {source_key} to {destination_bucket}/{destination_key}")
+            logger.info(f"Copied {source_key} to "
+                        f"{destination_bucket}/{destination_key}")
             return True
         except NoCredentialsError:
             logger.error("S3 Credentials not available")
@@ -57,13 +60,15 @@ class S3Handler:
             logger.error(f"Error copying file from S3 to S3: {e}")
             return False
 
-    def download_file_s3(self, bucket_name: str, object_key: str, download_path: str) -> bool:
+    def download_file_s3(self, bucket_name: str, object_key: str,
+                         download_path: str) -> bool:
         """
         Download a file from S3 to a local path.
         """
         try:
             logger.debug(
-                f"Downloading {object_key} from {bucket_name} to {download_path}")
+                f"Downloading {object_key} from {bucket_name} "
+                f"to {download_path}")
             self.s3_client.download_file(
                 bucket_name, object_key, download_path)
             logger.info(f"Downloaded {object_key} to {download_path}")
@@ -75,12 +80,14 @@ class S3Handler:
             logger.error(f"Error downloading file from S3: {e}")
             return False
 
-    def upload_directory_s3(self, directory_path: str, bucket_name: str, s3_prefix: str = "") -> bool:
+    def upload_directory_s3(self, directory_path: str, bucket_name: str,
+                            s3_prefix: str = "") -> bool:
         """
         Upload the contents of a local directory to an S3 bucket.
         """
         logger.debug(
-            f"Uploading contents of {directory_path} to {bucket_name}/{s3_prefix}")
+            f"Uploading contents of {directory_path} to "
+            f"{bucket_name}/{s3_prefix}")
         for root, _, files in os.walk(directory_path):
             for filename in files:
                 local_path = os.path.join(root, filename)
@@ -97,10 +104,12 @@ class S3Handler:
                     logger.error(f"Error uploading file to S3: {e}")
                     return False
         logger.info(
-            f"Uploaded contents of {directory_path} to {bucket_name}/{s3_prefix}")
+            f"Uploaded contents of {directory_path} to "
+            f"{bucket_name}/{s3_prefix}")
         return True
 
-    def upload_file_s3(self, file_path: str, bucket_name: str, object_key: str) -> bool:
+    def upload_file_s3(self, file_path: str, bucket_name: str,
+                       object_key: str) -> bool:
         """
         Upload a file to an S3 bucket.
         """
@@ -142,17 +151,19 @@ class S3Handler:
             # Check if the item is a file
             if not item_name.endswith('/'):
                 try:
-                    self.s3_client.head_object(Bucket=bucket_name, Key=item_name)
+                    self.s3_client.head_object(Bucket=bucket_name,
+                                               Key=item_name)
                     return True
                 except self.s3_client.exceptions.ClientError as e:
                     if e.response['Error']['Code'] == '404':
-                        logger.error(f"The object {item_name} does not exist in bucket {bucket_name}.")
+                        logger.debug(f"The object {item_name} does not "
+                                     f"exist in bucket {bucket_name}.")
                         return False
                     else:
-                        logger.error(f"Error checking item existence in S3: {e}")
+                        logger.error(f"Error checking item existence: {e}")
                         raise False
 
-            # If the item_name ends with '/', check for a folder (prefix existence)
+            # If the item_name ends with '/', check for a folder
             bucket = self.s3_resource.Bucket(bucket_name)
             objs = bucket.objects.filter(Prefix=item_name, MaxKeys=1)
             return any(obj.key.startswith(item_name) for obj in objs)
@@ -170,7 +181,9 @@ class S3Handler:
         current_timestamp_str = datetime.now().strftime("%Y%m%d-%H%M%S")
         destination_key = f"{s3_prefix}/{current_timestamp_str}/{source_key}"
 
-        if self.copy_file_s3_to_s3(source_bucket, source_key, unprocessed_destination_bucket, destination_key):
+        if self.copy_file_s3_to_s3(source_bucket, source_key,
+                                   unprocessed_destination_bucket,
+                                   destination_key):
             return self.delete_file_s3(source_bucket, source_key)
 
         return False
@@ -191,7 +204,7 @@ class S3Handler:
                         folders.add(folder)
             return sorted(folders)
         except Exception as e:
-            logger.error(f"Error listing folders in S3 bucket '{bucket_name}': {e}")
+            logger.error(f"Error listing folders in '{bucket_name}': {e}")
             return []
 
     def list_s3_files(self, bucket_name: str) -> list:
@@ -203,13 +216,14 @@ class S3Handler:
             files = [obj.key for obj in bucket.objects.all()]
             return files
         except Exception as e:
-            logger.error(f"Error listing files in S3 bucket '{bucket_name}': {e}")
+            logger.error(f"Error listing files in '{bucket_name}': {e}")
             return []
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     for lib in ('boto3', 'botocore', 'urllib3', 'pandas',
-            'pyarrow', 'pymavlink', 's3transfer'):
+                'pyarrow', 'pymavlink', 's3transfer'):
         # Change from DEBUG to WARNING
         logging.getLogger(lib).setLevel(logging.WARNING)
 

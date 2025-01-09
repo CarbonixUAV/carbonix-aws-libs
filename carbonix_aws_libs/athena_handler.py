@@ -31,10 +31,10 @@ class AthenaHandler:
                     'OutputLocation': self.output_location}
             response = self.athena_client.start_query_execution(**params)
             query_execution_id = response['QueryExecutionId']
-            logger.debug(f"Started query execution: {query_execution_id}")
+            logger.debug(f"{query_execution_id}")
             return query_execution_id
         except ClientError as e:
-            logger.debug(f"Error executing query: {e}")
+            logger.error(f"{e}")
             return None
 
     def get_query_status(self, query_execution_id: str) -> Optional[str]:
@@ -51,7 +51,7 @@ class AthenaHandler:
             logger.debug(f"Query {query_execution_id} status: {status}")
             return status
         except ClientError as e:
-            logger.debug(f"Error getting query status: {e}")
+            logger.error(f"Error getting query status: {e}")
             return None
 
     def wait_for_query_to_complete(self, query_execution_id: str,
@@ -82,7 +82,7 @@ class AthenaHandler:
                 QueryExecutionId=query_execution_id)
             return response
         except ClientError as e:
-            logger.debug(f"Error getting query results: {e}")
+            logger.error(f"Error getting query results: {e}")
             return None
 
     def check_loguid_exists(self, loguid: str) -> bool:
