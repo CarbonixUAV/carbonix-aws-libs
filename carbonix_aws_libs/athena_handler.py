@@ -165,3 +165,59 @@ class AthenaHandler:
                 return value
         return None
 
+    def get_add_partition_query(self, partition_list: list,
+                                s3_bucket_name: str) -> str:
+        """
+        Create an ALTER TABLE query to add partitions to an Athena table.
+
+        :param partition_list: A list of partition values.
+        :param s3_bucket_name: The name of the S3 bucket.
+        :return: The ALTER TABLE query.
+        """
+        partitions = []
+        # create the ALTER TABLE query
+        query = f"ALTER TABLE {self.database} ADD\n"
+
+        for folder in partition_list:
+            try:
+                # Extract partition key values from the folder path
+                folder = folder.lstrip("\\")
+                parts = folder.split("\\")
+                loguid = parts[0].split("=")[1]
+                messagetype = parts[1].split("=")[1]
+                instance = parts[2].split("=")[1]
+                keyname = parts[3].split("=")[1]
+                folder = folder.replace("\\", "/")
+                # Construct the PARTITION clause
+                partition = (f"PARTITION (loguid='{loguid}', "
+                             f"messagetype='{messagetype}', "
+                             f"instance='{instance}', keyname='{keyname}')\n"
+                             f"LOCATION 's3://{s3_bucket_name}/{folder}'")
+                partitions.append(partition)
+            except IndexError:
+                logger.error(f"Error parsing folder path: {folder}")
+                continue
+
+        if not partitions:
+            return None
+        query += "\n".join(partitions) + ";"
+        return query
+
+    def add_partitions(self, partition_list: list,
+                       s3_bucket_name: str) -> bool:
+        """
+        Add partitions to an Athena table.
+
+        :param partition_list: A list of partition values.
+        :param s3_bucket_name: The name of the S3 bucket.
+        :return: True if the partitions were added or False.
+        """
+        query = self.get_add_partition_query(partition_list, s3_bucket_name)
+        if not query:
+            return False
+        query_execution_id = self.execute_query(query)
+        if not query_execution_id:
+            return False
+        query_completed = self.wait_for_query_to_complete(query_execution_id)
+        return query_completed
+
