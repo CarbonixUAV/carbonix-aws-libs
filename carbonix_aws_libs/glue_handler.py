@@ -5,8 +5,10 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
+
 class GlueCrawlerHandler:
-    def __init__(self, crawler_name: str, region_name: Optional[str] = 'ap-southeast-2'):
+    def __init__(self, crawler_name: str,
+                 region_name: Optional[str] = 'ap-southeast-2'):
         self.glue_client = boto3.client('glue', region_name=region_name)
         self.crawler_name = crawler_name
 
@@ -14,7 +16,7 @@ class GlueCrawlerHandler:
         """
         Trigger the AWS Glue crawler.
 
-        :return: Response from the start_crawler API call or None if an error occurs.
+        :return: Response from the start_crawler API call or None.
         """
         try:
             response = self.glue_client.start_crawler(Name=self.crawler_name)
