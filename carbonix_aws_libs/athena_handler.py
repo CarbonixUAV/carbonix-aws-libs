@@ -119,15 +119,6 @@ class AthenaHandler:
         :file_type: The log type to get data for.
         :return: The boot time or None if an error occurs.
         """
-        """
-        SELECT loguid, timestamp
-        FROM telemetry_pool_v4.carbonix_logs_telemetry_data_pool
-        WHERE loguid = 'fd3be2ec0c7405080e79c85ee3a7edf38ae0100c8cd8ea04c99ac6a10c990c93' # noqa
-        AND (MessageType = 'FMT')
-        AND (KeyName = 'Type')
-        ORDER BY timestamp ASC
-        LIMIT 1;
-        """
 
         if file_type == ".BIN":
             query = f"""
@@ -181,7 +172,7 @@ class AthenaHandler:
         for folder in partition_list:
             try:
                 # Normalize folder path to use forward slashes
-                folder = folder.replace("\\", "/").lstrip("/")
+                folder = folder.replace("\\", "/").lstrip("/").rstrip("\n")
                 parts = folder.split("/")
                 loguid = parts[0].split("=")[1]
                 messagetype = parts[1].split("=")[1]
