@@ -180,14 +180,13 @@ class AthenaHandler:
 
         for folder in partition_list:
             try:
-                # Extract partition key values from the folder path
-                folder = folder.lstrip("\\")
-                parts = folder.split("\\")
+                # Normalize folder path to use forward slashes
+                folder = folder.replace("\\", "/").lstrip("/")
+                parts = folder.split("/")
                 loguid = parts[0].split("=")[1]
                 messagetype = parts[1].split("=")[1]
                 instance = parts[2].split("=")[1]
                 keyname = parts[3].split("=")[1]
-                folder = folder.replace("\\", "/")
                 # Construct the PARTITION clause
                 partition = (f"PARTITION (loguid='{loguid}', "
                              f"messagetype='{messagetype}', "
