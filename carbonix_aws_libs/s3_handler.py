@@ -219,6 +219,20 @@ class S3Handler:
             logger.error(f"Error listing files in '{bucket_name}': {e}")
             return []
 
+    def list_s3_files_and_size(self, bucket_name: str) -> list:
+        """
+        List all files in an S3 bucket and their sizes.
+        """
+        try:
+            bucket = self.s3_resource.Bucket(bucket_name)
+            files = []
+            for obj in bucket.objects.all():
+                files.append((obj.key, obj.size))
+            return files
+        except Exception as e:
+            logger.error(f"Error listing files in '{bucket_name}': {e}")
+            return []
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
